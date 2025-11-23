@@ -1,4 +1,4 @@
-📊 Otimizador de Carteira – Gabriel Gomes
+📊 Otimizador de Carteira 
 
 Este projeto implementa um sistema completo de análise, detecção de desbalanceamento, rebalanceamento, simulação de aportes e variação de mercado de uma carteira de investimentos.
 O objetivo é demonstrar, de forma clara e modular, como executar operações comuns de alocação de ativos.
