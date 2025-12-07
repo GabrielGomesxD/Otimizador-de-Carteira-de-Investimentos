@@ -2,22 +2,21 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <locale.h>
 
-#define MAX_FILHOS 20
+// parte do gabriel - arvore binaria
+
 #define ATIVO 2
 #define CATEGORIA 1
 #define RAIZ 0
 
 typedef struct No {
     char nome[64];
-    int tipo; // RAIZ, CATEGORIA ou ATIVO
-    float percentual_alvo; // usado para categorias (em %)
-    float valor_investido; // usado para ativos
-    float valor_total; // soma recursiva (categoria ou raiz)
-
-    struct No* filhos[MAX_FILHOS];
-    int num_filhos;
+    int tipo;
+    float percentual_alvo;
+    float valor_investido;
+    float valor_total;
+    struct No* esquerda;
+    struct No* direita;
 } No;
 
 typedef struct Arvore {
@@ -25,66 +24,52 @@ typedef struct Arvore {
     float valor_total;
 } Arvore;
 
-// ----- helpers de criação e montagem -----
-No* criar_no(const char* nome, int tipo, float percentual_alvo, float valor_investido) {
-    No* n = (No*) malloc(sizeof(No));
-    if(!n) {
-        perror("malloc");
-        exit(1);
-    }
-    strncpy(n->nome, nome, sizeof(n->nome)-1);
-    n->nome[sizeof(n->nome)-1] = '\0';
-    n->tipo = tipo;
-    n->percentual_alvo = percentual_alvo;
-    n->valor_investido = valor_investido;
-    n->valor_total = 0.0f;
-    n->num_filhos = 0;
-    for(int i=0;i<MAX_FILHOS;i++) n->filhos[i] = NULL;
-    return n;
-}
+// funcoes auxiliares (declaracoes)
+float calcular_total_no(No* no);
+No* buscar_no(No* raiz, const char* nome);
 
-void adicionar_filho(No* pai, No* filho) {
-    if(pai->num_filhos >= MAX_FILHOS) {
-        printf("\nErro: max filhos atingido para %s\n", pai->nome);
-        return;
-    }
-    pai->filhos[pai->num_filhos++] = filho;
-}
-
-// ----- operações na árvore -----
-
-// Calcula recursivamente o valor_total de um nó e retorna-o
+// Funcao para calcular total (recursiva)
 float calcular_total_no(No* no) {
-    if(no == NULL) return 0.0f;
-    if(no->num_filhos == 0) {
+    if(no == NULL) {
+        return 0.0;
+    }
+
+    if(no->esquerda == NULL && no->direita == NULL) {
         no->valor_total = no->valor_investido;
         return no->valor_total;
     }
-    float soma = 0.0f;
-    for(int i=0;i<no->num_filhos;i++) {
-        soma += calcular_total_no(no->filhos[i]);
-    }
-    soma += no->valor_investido;
+
+    float soma = 0.0;
+    soma = soma + calcular_total_no(no->esquerda);
+    soma = soma + calcular_total_no(no->direita);
+    soma = soma + no->valor_investido;
+
     no->valor_total = soma;
     return soma;
 }
 
-// Busca nó pelo nome (pré-ordem)
+// Funcao para buscar no (recursiva)
 No* buscar_no(No* raiz, const char* nome) {
-    if(raiz == NULL) return NULL;
-    if(strcmp(raiz->nome, nome) == 0) return raiz;
-    for(int i=0;i<raiz->num_filhos;i++) {
-        No* r = buscar_no(raiz->filhos[i], nome);
-        if(r != NULL) return r;
+    if(raiz == NULL) {
+        return NULL;
     }
-    return NULL;
+
+    if(strcmp(raiz->nome, nome) == 0) {
+        return raiz;
+    }
+
+    No* resultado = buscar_no(raiz->esquerda, nome);
+    if(resultado != NULL) {
+        return resultado;
+    }
+
+    return buscar_no(raiz->direita, nome);
 }
 
-// ----- Funções do sistema de carteira -----
-
+// Funcao para detectar desbalanceamento
 void detectar_desbalanceamento(Arvore* arvore) {
     if(arvore == NULL || arvore->raiz == NULL) {
-        printf("\n Carteira vazia!\n");
+        printf("\nCarteira vazia!\n");
         return;
     }
 
@@ -92,22 +77,45 @@ void detectar_desbalanceamento(Arvore* arvore) {
     arvore->valor_total = arvore->raiz->valor_total;
 
     printf("\n========================================\n");
-    printf("ANÁLISE DE BALANCEAMENTO\n");
+    printf("ANALISE DE BALANCEAMENTO\n");
     printf("========================================\n");
 
     int desbalanceado = 0;
     float tolerancia = 2.0;
 
-    for(int i = 0; i < arvore->raiz->num_filhos; i++) {
-        No* categoria = arvore->raiz->filhos[i];
+    // verificar renda fixa (esquerda)
+    if(arvore->raiz->esquerda != NULL) {
+        No* renda_fixa = arvore->raiz->esquerda;
+        float percentual_atual = (renda_fixa->valor_total / arvore->valor_total) * 100.0;
+        float diferenca = percentual_atual - renda_fixa->percentual_alvo;
 
-        float percentual_atual = (categoria->valor_total / arvore->valor_total) * 100.0f;
-        float diferenca = percentual_atual - categoria->percentual_alvo;
-
-        printf("\n%s:\n", categoria->nome);
-        printf("  Meta:  %.1f%%\n", categoria->percentual_alvo);
+        printf("\n%s:\n", renda_fixa->nome);
+        printf("  Meta:  %.1f%%\n", renda_fixa->percentual_alvo);
         printf("  Atual: %.1f%%\n", percentual_atual);
-        printf("  Diferença: %+.1f%%\n", diferenca);
+        printf("  Diferenca: %+.1f%%\n", diferenca);
+
+        if(fabs(diferenca) > tolerancia) {
+            if(diferenca > 0) {
+                printf("    ACIMA do alvo (sobra %.1f%%)\n", diferenca);
+            } else {
+                printf("    ABAIXO do alvo (falta %.1f%%)\n", -diferenca);
+            }
+            desbalanceado = 1;
+        } else {
+            printf("   Dentro do alvo\n");
+        }
+    }
+
+    // verificar acoes (direita)
+    if(arvore->raiz->direita != NULL) {
+        No* acoes = arvore->raiz->direita;
+        float percentual_atual = (acoes->valor_total / arvore->valor_total) * 100.0;
+        float diferenca = percentual_atual - acoes->percentual_alvo;
+
+        printf("\n%s:\n", acoes->nome);
+        printf("  Meta:  %.1f%%\n", acoes->percentual_alvo);
+        printf("  Atual: %.1f%%\n", percentual_atual);
+        printf("  Diferenca: %+.1f%%\n", diferenca);
 
         if(fabs(diferenca) > tolerancia) {
             if(diferenca > 0) {
@@ -123,17 +131,18 @@ void detectar_desbalanceamento(Arvore* arvore) {
 
     printf("\n========================================\n");
     if(desbalanceado) {
-        printf(" CARTEIRA DESBALANCEADA\n");
-        printf("Sugestão: Use a opção 8 para ver como rebalancear\n");
+        printf("CARTEIRA DESBALANCEADA\n");
+        printf("Sugestao: Use a opcao para ver como rebalancear\n");
     } else {
-        printf(" CARTEIRA BALANCEADA\n");
+        printf("CARTEIRA BALANCEADA\n");
     }
     printf("========================================\n");
 }
 
+// Funcao para sugerir rebalanceamento
 void sugerir_rebalanceamento(Arvore* arvore) {
     if(arvore == NULL || arvore->raiz == NULL) {
-        printf("\n Carteira vazia!\n");
+        printf("\nCarteira vazia!\n");
         return;
     }
 
@@ -141,102 +150,105 @@ void sugerir_rebalanceamento(Arvore* arvore) {
     arvore->valor_total = arvore->raiz->valor_total;
 
     printf("\n========================================\n");
-    printf("SUGESTÕES DE REBALANCEAMENTO\n");
+    printf("SUGESTOES DE REBALANCEAMENTO\n");
     printf("========================================\n");
 
     float tolerancia = 2.0;
     int precisa_rebalancear = 0;
 
-    typedef struct {
-        char nome[50];
-        float valor_atual;
-        float valor_alvo;
-        float diferenca_reais;
-    } Info;
+    printf("\nAcoes necessarias:\n\n");
 
-    Info categorias[20];
-    int num_categorias = arvore->raiz->num_filhos;
+    // verificar renda fixa (esquerda)
+    if(arvore->raiz->esquerda != NULL) {
+        No* renda_fixa = arvore->raiz->esquerda;
+        float valor_alvo = arvore->valor_total * (renda_fixa->percentual_alvo / 100.0);
+        float diferenca = renda_fixa->valor_total - valor_alvo;
 
-    for(int i = 0; i < num_categorias; i++) {
-        No* categoria = arvore->raiz->filhos[i];
+        if(diferenca > (arvore->valor_total * tolerancia / 100.0)) {
+            printf("* VENDER R$ %.2f de %s\n", diferenca, renda_fixa->nome);
+            precisa_rebalancear = 1;
+        } else if(diferenca < -(arvore->valor_total * tolerancia / 100.0)) {
+            printf("* COMPRAR R$ %.2f em %s\n", -diferenca, renda_fixa->nome);
+            precisa_rebalancear = 1;
+        }
+    }
 
-        float percentual_atual = (categoria->valor_total / arvore->valor_total) * 100.0f;
-        float valor_alvo = arvore->valor_total * (categoria->percentual_alvo / 100.0f);
-        float diferenca = categoria->valor_total - valor_alvo;
+    // verificar acoes (direita)
+    if(arvore->raiz->direita != NULL) {
+        No* acoes = arvore->raiz->direita;
+        float valor_alvo = arvore->valor_total * (acoes->percentual_alvo / 100.0);
+        float diferenca = acoes->valor_total - valor_alvo;
 
-        strncpy(categorias[i].nome, categoria->nome, sizeof(categorias[i].nome)-1);
-        categorias[i].nome[sizeof(categorias[i].nome)-1] = '\0';
-        categorias[i].valor_atual = categoria->valor_total;
-        categorias[i].valor_alvo = valor_alvo;
-        categorias[i].diferenca_reais = diferenca;
-
-        if(fabs((percentual_atual - categoria->percentual_alvo)) > tolerancia) {
+        if(diferenca > (arvore->valor_total * tolerancia / 100.0)) {
+            printf("* VENDER R$ %.2f de %s\n", diferenca, acoes->nome);
+            precisa_rebalancear = 1;
+        } else if(diferenca < -(arvore->valor_total * tolerancia / 100.0)) {
+            printf("* COMPRAR R$ %.2f em %s\n", -diferenca, acoes->nome);
             precisa_rebalancear = 1;
         }
     }
 
     if(!precisa_rebalancear) {
-        printf("\n Carteira já está balanceada!\n");
-        printf("========================================\n");
-        return;
-    }
-
-    printf("\nAções necessárias:\n\n");
-
-    for(int i = 0; i < num_categorias; i++) {
-        if(categorias[i].diferenca_reais > (arvore->valor_total * tolerancia / 100.0f)) {
-            printf("• VENDER R$ %.2f de %s\n",
-                   categorias[i].diferenca_reais, categorias[i].nome);
-        } else if(categorias[i].diferenca_reais < -(arvore->valor_total * tolerancia / 100.0f)) {
-            printf("• COMPRAR R$ %.2f em %s\n",
-                   -categorias[i].diferenca_reais, categorias[i].nome);
-        }
+        printf("Carteira ja esta balanceada!\n");
     }
 
     printf("\n========================================\n");
 }
 
+// Funcao para simular aporte
 void simular_aporte(Arvore* arvore, float valor_aporte) {
     if(arvore == NULL || arvore->raiz == NULL) {
-        printf("\n Carteira vazia!\n");
+        printf("\nCarteira vazia!\n");
         return;
     }
 
     if(valor_aporte <= 0) {
-        printf("\n Valor de aporte inválido!\n");
+        printf("\nValor de aporte invalido!\n");
         return;
     }
 
     printf("\n========================================\n");
-    printf("SIMULAÇÃO DE APORTE\n");
+    printf("SIMULACAO DE APORTE\n");
     printf("========================================\n");
     printf("Valor do aporte: R$ %.2f\n\n", valor_aporte);
 
-    printf("Distribuição proporcional:\n\n");
+    printf("Distribuicao proporcional:\n\n");
 
-    for(int i = 0; i < arvore->raiz->num_filhos; i++) {
-        No* categoria = arvore->raiz->filhos[i];
+    // distribuir para renda fixa (esquerda)
+    if(arvore->raiz->esquerda != NULL) {
+        No* renda_fixa = arvore->raiz->esquerda;
+        float valor_rf = valor_aporte * (renda_fixa->percentual_alvo / 100.0);
 
-        float valor_categoria = valor_aporte * (categoria->percentual_alvo / 100.0f);
+        printf("* %s (%.0f%%): + R$ %.2f\n",
+               renda_fixa->nome, renda_fixa->percentual_alvo, valor_rf);
+        printf("  Novo total: R$ %.2f -> R$ %.2f\n\n",
+               renda_fixa->valor_total, renda_fixa->valor_total + valor_rf);
 
-        printf("• %s (%.0f%%): + R$ %.2f\n",
-               categoria->nome, categoria->percentual_alvo, valor_categoria);
-        printf("  Novo total: R$ %.2f  R$ %.2f\n\n",
-               categoria->valor_total, categoria->valor_total + valor_categoria);
+        // dividir entre os ativos da categoria
+        if(renda_fixa->esquerda != NULL && renda_fixa->esquerda->tipo == ATIVO) {
+            renda_fixa->esquerda->valor_investido += valor_rf / 2;
+        }
+        if(renda_fixa->direita != NULL && renda_fixa->direita->tipo == ATIVO) {
+            renda_fixa->direita->valor_investido += valor_rf / 2;
+        }
+    }
 
-        if(categoria->num_filhos > 0) {
-            int count_ativos = 0;
-            for(int j=0;j<categoria->num_filhos;j++)
-                if(categoria->filhos[j]->tipo == ATIVO) count_ativos++;
+    // distribuir para acoes (direita)
+    if(arvore->raiz->direita != NULL) {
+        No* acoes = arvore->raiz->direita;
+        float valor_rv = valor_aporte * (acoes->percentual_alvo / 100.0);
 
-            float valor_por_ativo = (count_ativos > 0) ? valor_categoria / count_ativos : 0.0f;
+        printf("* %s (%.0f%%): + R$ %.2f\n",
+               acoes->nome, acoes->percentual_alvo, valor_rv);
+        printf("  Novo total: R$ %.2f -> R$ %.2f\n\n",
+               acoes->valor_total, acoes->valor_total + valor_rv);
 
-            for(int j = 0; j < categoria->num_filhos; j++) {
-                No* ativo = categoria->filhos[j];
-                if(ativo->tipo == ATIVO) {
-                    ativo->valor_investido += valor_por_ativo;
-                }
-            }
+        // dividir entre os ativos da categoria
+        if(acoes->esquerda != NULL && acoes->esquerda->tipo == ATIVO) {
+            acoes->esquerda->valor_investido += valor_rv / 2;
+        }
+        if(acoes->direita != NULL && acoes->direita->tipo == ATIVO) {
+            acoes->direita->valor_investido += valor_rv / 2;
         }
     }
 
@@ -245,32 +257,34 @@ void simular_aporte(Arvore* arvore, float valor_aporte) {
 
     printf("========================================\n");
     printf("Novo valor total da carteira: R$ %.2f\n", arvore->valor_total);
-    printf(" Carteira atualizada com aporte!\n");
+    printf("Carteira atualizada com aporte!\n");
     printf("========================================\n");
 }
 
+// Funcao para atualizar valores de mercado
 void atualizar_valores_mercado(Arvore* arvore, char* nome_ativo, float novo_valor) {
     if(arvore == NULL || arvore->raiz == NULL) {
-        printf("\n Carteira vazia!\n");
+        printf("\nCarteira vazia!\n");
         return;
     }
 
     No* ativo = buscar_no(arvore->raiz, nome_ativo);
 
     if(ativo == NULL) {
-        printf("\n Ativo '%s' não encontrado!\n", nome_ativo);
+        printf("\nAtivo nao encontrado!\n");
         return;
     }
 
     if(ativo->tipo != ATIVO) {
-        printf("\n '%s' não é um ativo!\n", nome_ativo);
+        printf("\nNao e um ativo!\n");
         return;
     }
 
     float valor_anterior = ativo->valor_investido;
-    float variacao = 0.0f;
-    if(valor_anterior != 0.0f)
-        variacao = ((novo_valor - valor_anterior) / valor_anterior) * 100.0f;
+    float variacao = 0.0;
+    if(valor_anterior != 0.0) {
+        variacao = ((novo_valor - valor_anterior) / valor_anterior) * 100.0;
+    }
 
     ativo->valor_investido = novo_valor;
 
@@ -278,80 +292,12 @@ void atualizar_valores_mercado(Arvore* arvore, char* nome_ativo, float novo_valo
     arvore->valor_total = arvore->raiz->valor_total;
 
     printf("\n========================================\n");
-    printf("ATUALIZAÇÃO DE MERCADO\n");
+    printf("ATUALIZACAO DE MERCADO\n");
     printf("========================================\n");
     printf("Ativo: %s\n", nome_ativo);
     printf("Valor anterior: R$ %.2f\n", valor_anterior);
     printf("Novo valor: R$ %.2f\n", novo_valor);
-    printf("Variação: %+.2f%%\n", variacao);
+    printf("Variacao: %+.2f%%\n", variacao);
     printf("========================================\n");
-    printf("\n Dica: Use detectar_desbalanceamento() para verificar se a carteira desbalanceou.\n");
-}
-
-// ----- liberar memória -----
-
-void liberar_no(No* no) {
-    if(no == NULL) return;
-    for(int i=0;i<no->num_filhos;i++) liberar_no(no->filhos[i]);
-    free(no);
-}
-
-// ----- exemplo da carteira -----
-
-Arvore* criar_exemplo() {
-    Arvore* a = (Arvore*) malloc(sizeof(Arvore));
-    a->raiz = criar_no("Carteira", RAIZ, 0.0f, 0.0f);
-
-    No* renda_fixa = criar_no("Renda Fixa", CATEGORIA, 50.0f, 0.0f);
-    No* acoes = criar_no("Ações", CATEGORIA, 40.0f, 0.0f);
-    No* caixa = criar_no("Caixa", CATEGORIA, 10.0f, 0.0f);
-
-    No* tesouro = criar_no("Tesouro Selic", ATIVO, 0.0f, 3000.0f);
-    No* cdb = criar_no("CDB XP", ATIVO, 0.0f, 2000.0f);
-
-    No* petro = criar_no("PETR4", ATIVO, 0.0f, 1500.0f);
-    No* itau = criar_no("ITUB4", ATIVO, 0.0f, 1500.0f);
-
-    No* conta = criar_no("Conta Corrente", ATIVO, 0.0f, 500.0f);
-
-    adicionar_filho(a->raiz, renda_fixa);
-    adicionar_filho(a->raiz, acoes);
-    adicionar_filho(a->raiz, caixa);
-
-    adicionar_filho(renda_fixa, tesouro);
-    adicionar_filho(renda_fixa, cdb);
-
-    adicionar_filho(acoes, petro);
-    adicionar_filho(acoes, itau);
-
-    adicionar_filho(caixa, conta);
-
-    calcular_total_no(a->raiz);
-    a->valor_total = a->raiz->valor_total;
-
-    return a;
-}
-
-int main() {
-    setlocale(LC_ALL, "Portuguese"); // habilita acentuação
-
-    Arvore* carteira = criar_exemplo();
-
-    printf("\n=== Estado inicial da carteira ===\n");
-    printf("Valor total: R$ %.2f\n", carteira->valor_total);
-    detectar_desbalanceamento(carteira);
-
-    printf("\n=== Teste Caso 2: valorizar PETR4 ===\n");
-    atualizar_valores_mercado(carteira, "PETR4", 3000.0f);
-    detectar_desbalanceamento(carteira);
-    sugerir_rebalanceamento(carteira);
-
-    printf("\n=== Teste Caso 3: aporte de R$ 1000 ===\n");
-    simular_aporte(carteira, 1000.0f);
-    detectar_desbalanceamento(carteira);
-    sugerir_rebalanceamento(carteira);
-
-    liberar_no(carteira->raiz);
-    free(carteira);
-    return 0;
+    printf("\nDica: Use detectar_desbalanceamento() para verificar.\n");
 }
