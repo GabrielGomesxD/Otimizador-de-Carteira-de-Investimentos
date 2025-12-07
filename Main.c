@@ -3,6 +3,8 @@
 #include <string.h>
 #include <math.h>
 #include <locale.h>
+#include "struct.h"
+
 
 // ========================================
 // DEFINICOES
@@ -11,25 +13,6 @@
 #define ATIVO 2
 #define CATEGORIA 1
 #define RAIZ 0
-
-// ========================================
-// STRUCTS - ARVORE BINARIA
-// ========================================
-
-typedef struct No {
-    char nome[64];
-    int tipo;
-    float percentual_alvo;
-    float valor_investido;
-    float valor_total;
-    struct No* esquerda;  // filho esquerdo
-    struct No* direita;   // filho direito
-} No;
-
-typedef struct Arvore {
-    No* raiz;
-    float valor_total;
-} Arvore;
 
 // ========================================
 // FUNCOES DO LUIS
